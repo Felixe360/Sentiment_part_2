@@ -1,5 +1,5 @@
 # Sentiment_part_2
-# 📊 Project Report: Sentiment Portfolio Optimization
+# Project Report: Sentiment Portfolio Optimization
 
 ## 1. The Core Philosophy
 
