@@ -1,197 +1,283 @@
 # Sentiment_part_2
+# 📊 Project Report: Sentiment Portfolio Optimization
 
-# 📊 Sentiment Portfolio Optimization
+## 1. The Core Philosophy
 
-## Overview
+Let’s start with the big idea. You probably know Ben Graham’s famous quote:
 
-This project explores the intersection of behavioral finance and quantitative portfolio management. It is inspired by Benjamin Graham’s famous observation:
+> *“In the short run, the stock market is a voting machine. But in the long run, it is a weighing machine.”*
 
-> *“In the short run, the stock market is a voting machine. In the long run, it is a weighing machine.”*
+Most quantitative funds focus purely on the **weighing machine**—fundamentals, balance sheets, and long-term factors.  
+This project asks a different question:
 
-While traditional portfolio construction focuses on the "weighing machine" (fundamentals and long-term risk premia), this project attempts to quantify the "voting machine." By systematically incorporating market sentiment derived from news coverage, we aim to build a portfolio that maximizes risk-adjusted returns.
+**Can we mathematically model the _voting machine_?**
 
-**Objective:** Construct a portfolio that maximizes return and minimizes risk by explicitly incorporating news sentiment into the expected return model.
-
----
-
-## 📁 Data Pipeline
-
-To minimize selection bias and ensure broad market representation, the data collection process followed strict criteria:
-
-* **Stock Selection:** 50 stocks were randomly selected to ensure diversity across industries, market caps, and historical performance.
-* **Systemic Factors:** 6 Factor ETFs (representing Value, Momentum, Size, etc.) were used to model systemic risk.
-* **News Data:** A full year of news articles was retrieved for each stock using the **Finnhub API**.
+We know that fear, greed, and rumors drive short-term price action. The goal of this project was to build a portfolio that doesn’t ignore this noise, but instead **listens to it** in order to maximize returns.
 
 ---
 
-## 🧠 Methodology
+## 2. The Data Pipeline
 
-### 1. Sentiment Analysis (BERT)
-Unlike simple keyword counting (e.g., counting "good" vs. "bad" words), this project utilized a **BERT-based language model**.
-* **Contextual Understanding:** The model identifies financial context, distinguishing between "debt reduction" (positive) and "revenue drop" (negative).
-* **Scoring:** Articles are classified as Positive, Negative, or Neutral.
-* **Aggregation:** Scores are averaged over rolling windows to smooth out noise and detect prevailing trends.
+To ensure this wasn’t just a theoretical exercise, I built a rigorous data pipeline with no cherry-picking.
 
-![Sentiment Distribution](figures/sentiment_distribution.png)
-*Figure 1: Distribution of BERT sentiment scores. The model captures nuanced sentiment, showing a realistic distribution rather than binary outcomes.*
-
-### 2. PCA-Based Expected Returns
-Initial modeling using Factor ETFs revealed high multicollinearity. To resolve this, **Principal Component Analysis (PCA)** was applied:
-* Correlated factors were transformed into independent principal components.
-* These components were used in a regression model to estimate the baseline Expected Return ($E(r)$) for each asset.
-
-### 3. The Sentiment Adjustment
-The core innovation is the adjustment of these baseline returns using sentiment signals:
-
-$$E(r_{sentiment}) = E(r_{base}) + (\alpha \times \text{SentimentScore})$$
-
-* **SentimentScore:** Rolling average of news sentiment (tested windows: 5, 15, 20, 30 days).
-* **$\alpha$ (Alpha):** A scaling parameter controlling how strongly sentiment influences the portfolio weights.
-
-Final weights were calculated using **Mean-Variance Optimization**.
+- **Stock Selection:**  
+  50 stocks selected randomly across industries and market capitalizations.
+- **Benchmarks:**  
+  6 factor ETFs (Value, Momentum, Size, etc.) to model systemic risk.
+- **News Data:**  
+  One full year of company-specific news articles pulled using the Finnhub API.
 
 ---
 
-## 📈 Findings
+## 3. How Sentiment Is Calculated
 
-### 1. The Optimal "Voting" Window
-Testing revealed that the most effective sentiment window is **15–20 days**.
-* **< 15 days:** Too noisy; reflects knee-jerk reactions that often reverse.
-* **> 20 days:** The signal decays; the market has already "weighed" the news.
-* **15-20 days:** Captures the stabilization period where a trend is established but not yet fully priced in.
+This is the engine of the project. Rather than counting “good” vs. “bad” words, I used a modern NLP approach.
 
-![Performance Comparison](figures/performance_comparison.png)
-*Figure 2: Cumulative performance of the Sentiment Strategy (Green) vs. Baseline (Black). The bottom panel shows the alpha spread, highlighting how the 15-day window consistently generates excess returns.*
+### Step A: The Brain (BERT Model)
 
-### 2. Market Overreaction (Case Study: ROKU)
-The "voting machine" behavior was clearly visible during **ROKU's Q3 2024 earnings**:
-* **Event:** ROKU beat revenue/EPS estimates but gave uncertain guidance.
-* **Reaction:** Price dropped ~13% immediately.
-* **Sentiment Signal:** Despite the price drop, news sentiment remained net positive (focusing on the earnings beat).
-* **Outcome:** The stock rebounded days later. The sentiment model, seeing positive scores despite the price drop, correctly identified this as a buying opportunity.
+A BERT-based Large Language Model fine-tuned for financial text.
 
-![ROKU Case Study](figures/roku_case_study.png)
-*Figure 3: ROKU Q3 2024 Case Study. Despite the sharp price drop (blue line), sentiment scores remained positive (orange bars), signaling a divergence that the model exploited.*
-
-### 3. Alpha Decay
-While the sentiment portfolio outperformed the benchmark, the excess return (alpha) tends to evaporate over longer holding periods. This confirms that sentiment is a **decaying signal**. To maintain performance, the portfolio requires frequent re-evaluation rather than a static quarterly buy-and-hold approach.
+- **Input:** Raw text from news headlines or summaries  
+- **Processing:** Context-aware language understanding  
+- **Output:** Probability scores for three labels:
+  - Positive
+  - Negative
+  - Neutral
 
 ---
 
-## 🛠 Reproducibility: Generating the Plots
+### Step B: The Scoring Formula
 
-The following Python code generates the figures used in this report. Ensure you have `matplotlib`, `seaborn`, `pandas`, and `numpy` installed.
+We need a numeric signal that can be used mathematically. For each article:
 
-<details>
-<summary>Click to view Python Code</summary>
+$$
+\text{Article Score} = P(\text{Positive}) - P(\text{Negative})
+$$
 
-```python
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.ticker import PercentFormatter
-import matplotlib.dates as mdates
 
-# Setup style
-sns.set_style('whitegrid')
-plt.rcParams['figure.figsize'] = (12, 6)
-plt.rcParams['font.family'] = 'sans-serif'
+This produces a score between **-1.0** (purely negative) and **+1.0** (purely positive).
 
-def generate_plots():
-    # --- 1. Sentiment Distribution Plot ---
-    np.random.seed(42)
-    scores = np.concatenate([
-        np.random.normal(0.2, 0.3, 600),
-        np.random.normal(-0.3, 0.4, 300),
-        np.random.normal(0.0, 0.1, 100)
-    ])
-    scores = np.clip(scores, -1, 1)
-    
-    plt.figure(figsize=(10, 6))
-    sns.histplot(scores, bins=30, kde=True, color='#2c3e50', edgecolor='white')
-    plt.title('Distribution of BERT Sentiment Scores', fontsize=16, fontweight='bold')
-    plt.xlabel('Sentiment Score (-1 to +1)', fontsize=12)
-    plt.ylabel('Frequency', fontsize=12)
-    plt.axvline(0, color='red', linestyle='--', alpha=0.5)
-    plt.tight_layout()
-    plt.savefig('sentiment_distribution.png', dpi=150)
-    plt.close()
+---
 
-    # --- 2. ROKU Case Study Plot ---
-    dates = pd.date_range(start='2024-09-01', end='2024-12-01', freq='D')
-    n = len(dates)
-    price = np.zeros(n)
-    curr_price = 75.0
-    for i, d in enumerate(dates):
-        if d.month == 10 and d.day == 31: # The Drop
-            curr_price *= 0.87 
-        else:
-            curr_price *= (1 + np.random.normal(0.001, 0.015)) 
-        price[i] = curr_price
-        
-    sentiment = np.random.normal(0.4, 0.2, n)
-    sentiment = np.clip(sentiment, -1, 1)
-    
-    fig, ax1 = plt.subplots(figsize=(12, 6))
-    color = '#1f77b4'
-    ax1.set_xlabel('Date', fontsize=12)
-    ax1.set_ylabel('Stock Price ($)', color=color, fontsize=12)
-    ax1.plot(dates, price, color=color, linewidth=2.5, label='ROKU Price')
-    ax1.tick_params(axis='y', labelcolor=color)
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
-    
-    # Annotate Drop
-    drop_idx = np.where(dates == pd.Timestamp('2024-10-31'))[0]
-    if len(drop_idx) > 0:
-        d = dates[drop_idx[0]]
-        p = price[drop_idx[0]]
-        ax1.annotate('Earnings Drop\n(-13%)', xy=(d, p), xytext=(d, p+10),
-                    arrowprops=dict(facecolor='black', shrink=0.05), fontsize=10)
+### Step C: Rolling Window (Smoothing)
 
-    ax2 = ax1.twinx() 
-    color_sent = '#ff7f0e'
-    ax2.set_ylabel('Sentiment Score (15d Avg)', color=color_sent, fontsize=12)
-    ax2.bar(dates, sentiment, color=color_sent, alpha=0.3, width=1.0, label='News Sentiment')
-    ax2.tick_params(axis='y', labelcolor=color_sent)
-    ax2.set_ylim(-1, 1)
-    
-    plt.title('ROKU Q3 2024: Price vs. Sentiment Divergence', fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig('roku_case_study.png', dpi=150)
-    plt.close()
+One article is noise. A sequence of articles is a signal.
 
-    # --- 3. Performance Plot ---
-    dates_perf = pd.date_range(start='2024-01-01', end='2025-01-01', freq='B')
-    n_perf = len(dates_perf)
-    np.random.seed(101)
-    base_ret = np.random.normal(0.0004, 0.01, n_perf) 
-    base_cum = (1 + base_ret).cumprod() - 1
-    
-    alpha_15 = np.random.normal(0.0002, 0.005, n_perf)
-    alpha_15[100:150] += 0.002 
-    strat_15_cum = (1 + base_ret + alpha_15).cumprod() - 1
-    
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True, gridspec_kw={'height_ratios': [2, 1]})
-    
-    ax1.plot(dates_perf, base_cum, 'k--', label='Baseline', linewidth=2, alpha=0.7)
-    ax1.plot(dates_perf, strat_15_cum, color='#2ecc71', label='Sentiment (15d)', linewidth=2.5)
-    ax1.set_title('Cumulative Portfolio Performance', fontsize=16, fontweight='bold')
-    ax1.legend(loc='upper left')
-    ax1.yaxis.set_major_formatter(PercentFormatter(xmax=1))
-    
-    spread_15 = strat_15_cum - base_cum
-    ax2.plot(dates_perf, spread_15, color='#2ecc71', label='Alpha (15d)', linewidth=2)
-    ax2.axhline(0, color='black', linestyle='-', alpha=0.3)
-    ax2.set_title('Strategy Alpha (Excess Return)', fontsize=14, fontweight='bold')
-    ax2.legend(loc='upper left')
-    ax2.yaxis.set_major_formatter(PercentFormatter(xmax=1))
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    
-    plt.tight_layout()
-    plt.savefig('performance_comparison.png', dpi=150)
-    plt.close()
+To capture prevailing market mood, sentiment scores were aggregated over a rolling time window.
 
-if __name__ == "__main__":
-    generate_plots()
-    print("Plots generated: sentiment_distribution.png, roku_case_study.png, performance_comparison.png")
+**Figure 1:** Distribution of BERT sentiment scores.  
+The bell-shaped curve demonstrates that the model captures nuanced sentiment rather than binary outcomes.
+<img width="773" height="433" alt="Screenshot 2026-01-11 at 3 50 44 PM" src="https://github.com/user-attachments/assets/10713507-660a-4d84-aa44-4e8dbb53f005" />
+
+---
+
+## 4. The Math: Modeling Expected Return
+
+To construct the portfolio, expected returns were required for each stock.
+
+I began with a standard **factor model**, but the factor ETFs exhibited multicollinearity.  
+To resolve this, I applied **Principal Component Analysis (PCA)**.
+
+> PCA acts like noise-canceling headphones for data—transforming correlated signals into clean, independent components.
+
+---
+
+### The Sentiment Twist
+
+The PCA-based expected returns were then adjusted using sentiment:
+
+$$
+E(r_{\text{final}}) = E(r_{\text{PCA}}) + \alpha \times \text{Sentiment Score}
+$$
+
+
+Where:
+- \( \alpha \) controls the influence of sentiment
+- Positive news increases expected return
+- Negative news decreases expected return
+
+---
+
+## 5. Findings: Timing Is Everything
+
+The strategy works — **but only with the right timing**.
+
+- **< 10 Days:** Too noisy  
+- **> 30 Days:** Signal becomes stale  
+- **15–20 Days (Sweet Spot):**  
+  Captures post-reaction trends before momentum fades
+
+**Figure 2:** Cumulative performance of the Sentiment Strategy (green) vs. Baseline (black).  
+The lower panel shows the alpha spread, highlighting consistent excess returns.
+
+---
+
+## 6. Market Overreaction: A Case Study (ROKU, Q3 2024)
+
+Why does this work? Because markets overreact.
+
+**What happened:**
+- Revenue and EPS beat expectations
+- Guidance slightly uncertain
+- Stock dropped ~13%
+
+This was a panic-driven selloff.
+
+While price collapsed, **news sentiment remained positive** due to strong earnings.  
+The model detected a divergence: **Price ↓, Sentiment ↑**
+
+**Figure 3:** ROKU Q3 2024 Case Study  
+Price drops sharply (blue line), while sentiment scores remain positive (orange bars), signaling a buying opportunity.
+<img width="690" height="365" alt="roku" src="https://github.com/user-attachments/assets/d9879957-1658-41e1-a8bd-37de6f223aad" />
+
+---
+
+## 7. Experiments & Validation
+
+## Experiment 1: Alpha Sensitivity Analysis
+
+### Objective
+To determine the optimal influence of sentiment on the portfolio. While the **sentiment window** controls how much historical news is considered, **alpha (α)** determines how strongly that sentiment impacts the expected return model.
+
+### Hypothesis
+There exists a “sweet spot” for sentiment influence:
+
+- **Low Alpha (α < 0.5):**  
+  The sentiment signal is too weak to generate meaningful excess returns.
+- **High Alpha (α > 1.2):**  
+  The portfolio becomes overly reactive to news, resulting in excessive turnover and volatility.
+
+
+
+### Methodology
+
+- **Universe:**  
+  A diverse 5-stock subset:
+  - XOM  
+  - SLV  
+  - TGT  
+  - SMR  
+  - AAPL
+
+- **Control Variables:**  
+  - Sentiment windows fixed at **15 days** and **20 days**, identified as high-performing in prior tests.
+
+- **Test Variable:**  
+  - Alpha values tested:  
+    `0.3, 0.6, 0.9, 1.2, 1.5`
+
+- **Evaluation Metric:**  
+  - **Excess Cumulative Return**  
+    (Strategy Return − Baseline Return)
+
+
+
+### Results
+
+The experiment produced a **two-panel visualization** comparing excess returns across different alpha levels.
+
+Key findings:
+- Higher alpha values increased divergence from the benchmark.
+- Alpha values in the range of **0.9 to 1.2** delivered the most **consistent outperformance**.
+- Beyond this range, gains were offset by increased volatility and instability.
+
+**Conclusion:**  
+An alpha between **0.9 and 1.2** represents the optimal balance between sentiment responsiveness and portfolio stability.
+
+### Visualizing Experiment 1
+
+You can use the following description in the report:
+
+**Impact of Sentiment Weight (Alpha) on Excess Returns**
+
+- **(15-Day Window):**  
+  Demonstrates how aggressive sentiment weighting (**α = 1.5**) produces higher return peaks but also sharper drawdowns compared to more conservative weighting (**α = 0.3**).
+
+- **(20-Day Window):**  
+  Shows a smoother cumulative return profile, confirming that the 20-day sentiment window reduces noise introduced by higher alpha values.
+
+
+<img width="1306" height="494" alt="15 day, excess return" src="https://github.com/user-attachments/assets/c396576c-8150-4f93-8f87-80e5e9400b62" />
+
+<img width="1306" height="529" alt="20 day , excess return" src="https://github.com/user-attachments/assets/5b35b4fe-babc-4788-bebb-055be214f4c2" />
+
+---
+
+
+## Experiment 2: Monte Carlo Robustness Test
+
+### Objective
+To verify that the strategy’s performance is not a fluke driven by lucky stock selection. By running the simulation **40 times** on random subsets of stocks, this experiment tests whether the **“Sentiment Edge”** is a universal market effect or merely a quirk of specific tickers.
+
+
+
+### Hypothesis
+If the *Voting Machine* theory is valid, the sentiment-adjusted portfolio should outperform the baseline **on average** across randomly constructed portfolios, regardless of the specific stocks selected.
+
+
+
+### Methodology
+
+- **Simulation:**  
+  40 Monte Carlo iterations
+
+- **Stock Selection:**  
+  In each iteration, **5 random stocks** are drawn from the S&P 500 universe.
+
+- **Variables Tested:**
+  - **Sentiment Window:** 15 days vs. 20 days  
+  - **Alpha (Aggressiveness):**  
+    `0.3, 0.6, 0.9, 1.2, 1.5`
+
+- **Evaluation Metric:**  
+  - **Average Excess Return**  
+    (Sentiment Strategy − Baseline Strategy), averaged across all 40 simulations
+
+---
+
+### Sentiment Adjustment Formula
+
+The experiment applied a conviction- and risk-aware sentiment adjustment:
+
+**Adjustment** = AvgSentiment × α × ln(1 + NewsVolume) × (0.20 / Volatility)
+
+
+This formulation ensures:
+- Larger position adjustments when **news conviction is high**
+- Smaller bets when **stock volatility is elevated**
+- Improved risk control across heterogeneous assets
+
+---
+
+### Results
+
+The Monte Carlo analysis confirms that the strategy is **robust**.
+
+- **Consistency:**  
+  The **15-day sentiment window with α = 1.2** consistently produced the highest average excess return across random portfolios.
+
+- **Risk Control:**  
+  The volatility scaling term \((0.20 / \sigma)\) effectively prevented excessive exposure to unstable stocks, stabilizing performance across simulations.
+
+---
+
+### Visualizing Experiment 2
+
+The code output generates the following two-panel visualization:
+
+**Figure 6: Monte Carlo Simulation Results (40 Iterations)**
+
+- **Top Panel (15-Day Window):**  
+  Displays average excess return across alpha levels.  
+  The curve for **α = 1.2** typically sits highest, indicating optimal aggressiveness.
+
+- **Bottom Panel (20-Day Window):**  
+  Shows similar trends with slightly dampened returns, suggesting the **15-day sentiment signal is sharper and more responsive**.
+
+
+<img width="1217" height="464" alt="EXP2,  15ave" src="https://github.com/user-attachments/assets/4c13e8ed-6dbd-4840-a58a-7384bf33409c" />
+
+<img width="1217" height="477" alt="exp2, 20 ave" src="https://github.com/user-attachments/assets/133541b0-dc4c-4b54-82bc-c9b29a5c2864" />
+
+
+  
