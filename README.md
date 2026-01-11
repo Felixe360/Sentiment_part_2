@@ -46,16 +46,25 @@ A BERT-based Large Language Model fine-tuned for financial text.
 
 ---
 
+
+
 ### Step B: The Scoring Formula
 
-We need a numeric signal that can be used mathematically. For each article:
+We need a numeric signal that can be used mathematically.
 
-$$
-\text{Article Score} = P(\text{Positive}) - P(\text{Negative})
-$$
+**Article Score** = P(Positive) − P(Negative)
 
+This produces a score between **−1.0** (purely negative) and **+1.0** (purely positive).
 
-This produces a score between **-1.0** (purely negative) and **+1.0** (purely positive).
+To scale this sentiment signal based on conviction and risk, the raw score is further adjusted as follows:
+
+**Adjustment** = AvgSentiment × α × ln(1 + NewsVolume) × (0.20 / Volatility)
+
+Where:
+- **AvgSentiment** is the rolling average sentiment score
+- **α** controls the aggressiveness of sentiment influence
+- **NewsVolume** represents the number of articles in the window
+- **Volatility** is the rolling return volatility
 
 ---
 
@@ -233,21 +242,7 @@ If the *Voting Machine* theory is valid, the sentiment-adjusted portfolio should
   - **Average Excess Return**  
     (Sentiment Strategy − Baseline Strategy), averaged across all 40 simulations
 
----
 
-### Sentiment Adjustment Formula
-
-The experiment applied a conviction- and risk-aware sentiment adjustment:
-
-**Adjustment** = AvgSentiment × α × ln(1 + NewsVolume) × (0.20 / Volatility)
-
-
-This formulation ensures:
-- Larger position adjustments when **news conviction is high**
-- Smaller bets when **stock volatility is elevated**
-- Improved risk control across heterogeneous assets
-
----
 
 ### Results
 
